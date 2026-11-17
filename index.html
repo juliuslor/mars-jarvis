@@ -1,4 +1,4 @@
-  <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -124,6 +124,9 @@ main{padding:14px}
 <input id="cid" style="width:100%" placeholder="1234-abc.apps.googleusercontent.com">
 <label for="wake">Wake word</label><input id="wake">
 <label for="rate">Speech speed</label><input id="rate" type="range" min=".6" max="1.6" step=".1">
+<label for="voice">Voice</label><select id="voice" style="width:100%"><option value="">Device default</option></select>
+<label for="pitch">Pitch (lower is deeper)</label><input id="pitch" type="range" min=".5" max="1.5" step=".1">
+<div class="row" style="margin-top:10px"><button class="b" id="test">Test voice</button></div>
 <div class="row" style="margin-top:14px"><button class="b act" id="save-set">Save settings</button><button class="b" id="resync">Reload from Drive</button><button class="b hot" id="signout">Sign out</button></div>
 <p class="empty" id="sync">Not connected. Memory lives in jarvis_data.json on your Drive.</p>
 </div>
@@ -136,7 +139,7 @@ main{padding:14px}
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const uid=()=>Math.random().toString(36).slice(2,9);
-const blank=()=>({notes:[],tasks:[],research:[],settings:{wake:'jarvis',rate:1},conversations:[]});
+const blank=()=>({notes:[],tasks:[],research:[],settings:{wake:'jarvis',rate:1,voice:'',pitch:1},conversations:[]});
 let D=blank(),token=null,fileId=null,muted=false,listening=false,ptt=false,awaiting=false,rec=null,saveT=null,tc=null;
 const FILE='jarvis_data.json',DRIVE='https://www.googleapis.com/drive/v3/files',UP='https://www.googleapis.com/upload/drive/v3/files';
 
@@ -197,7 +200,7 @@ function render(){
   $('#s-res').textContent=D.research.length;
   $('#s-conv').textContent=D.conversations.length;
   $('#log').innerHTML=D.conversations.length?[...D.conversations].reverse().map(c=>`<div class="cmd">› ${esc(c.cmd)}</div><div class="rep">${esc(c.reply)}</div>`).join(''):'<div class="empty">No commands yet.</div>';
-  $('#wake').value=D.settings.wake;$('#rate').value=D.settings.rate;$('#cid').value=localStorage.getItem('mj_cid')||'';
+  $('#wake').value=D.settings.wake;$('#rate').value=D.settings.rate;$('#pitch').value=D.settings.pitch||1;$('#voice').value=D.settings.voice||'';$('#cid').value=localStorage.getItem('mj_cid')||'';
 }
 function orbState(){
   const t=muted?'MUTED':listening||ptt?'LIVE':'IDLE';
@@ -208,10 +211,20 @@ function orbState(){
 }
 
 /* ---------- Voice ---------- */
-function speak(t){
-  if(muted||!('speechSynthesis'in window))return;
+function speak(t,o){
+  if((muted&&!o)||!('speechSynthesis'in window))return;
+  const s=o||D.settings;
   speechSynthesis.cancel();
-  const u=new SpeechSynthesisUtterance(t);u.rate=+D.settings.rate||1;speechSynthesis.speak(u);
+  const u=new SpeechSynthesisUtterance(t);
+  u.rate=+s.rate||1;u.pitch=+s.pitch||1;
+  const v=speechSynthesis.getVoices().find(x=>x.name===s.voice);
+  if(v){u.voice=v;u.lang=v.lang}
+  speechSynthesis.speak(u);
+}
+function fillVoices(){
+  const sel=$('#voice');if(!sel||!('speechSynthesis'in window))return;
+  sel.innerHTML='<option value="">Device default</option>'+speechSynthesis.getVoices().map(v=>`<option value="${esc(v.name)}">${esc(v.name)} (${esc(v.lang)})</option>`).join('');
+  sel.value=D.settings.voice||'';
 }
 function startRec(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -291,10 +304,12 @@ $('#send').onclick=()=>{const v=$('#typed').value.trim();if(v){$('#typed').value
 $('#typed').onkeydown=e=>{if(e.key==='Enter')$('#send').click()};
 $('#save-set').onclick=()=>{
   localStorage.setItem('mj_cid',$('#cid').value.trim());
-  D.settings.wake=($('#wake').value.trim()||'jarvis').toLowerCase();D.settings.rate=+$('#rate').value;
+  D.settings.wake=($('#wake').value.trim()||'jarvis').toLowerCase();D.settings.rate=+$('#rate').value;D.settings.voice=$('#voice').value;D.settings.pitch=+$('#pitch').value;
   commit();toast('Settings saved.');
 };
+$('#test').onclick=()=>speak('Hello. I am Jarvis, online and ready.',{voice:$('#voice').value,rate:+$('#rate').value,pitch:+$('#pitch').value});
 render();orbState();
+if('speechSynthesis'in window){speechSynthesis.onvoiceschanged=fillVoices;fillVoices()}
 </script>
 </body>
 </html>
